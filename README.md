@@ -1,2 +1,2 @@
 # sbc_backup
-Python Script for backing up SBC configs
+Python Script for backing up Oracle (Acme Packet) SBC configs. The script takes a list of SBCs management IP, and every time when run will get current running config and store it in its own folder with the management ip and the revision number. The script will keep last X backups and when X exceeded, it will delete the backup with the lowest revision number. In case that there is already a backup with the same revision number, the script proceeds to the next SBC.
