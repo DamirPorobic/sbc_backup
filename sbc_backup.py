@@ -44,7 +44,7 @@ def execute(channel, cmd):
 def cleanUpBackup(dir):
     backups = os.listdir(dir)
     if len(backups) > numberOfBackups:
-        logger.info('Number of backups excised limit ' + str(len(backups)) + '/' + str(numberOfBackups) )
+        logger.info('Number of backups exceeded limit ' + str(len(backups)) + '/' + str(numberOfBackups) )
         backups.sort()
         logger.warning('Removing lowest revision number: ' + backups[0])
         os.remove(dir + '\\' + backups[0])
