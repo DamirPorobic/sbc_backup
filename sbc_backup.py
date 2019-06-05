@@ -2,31 +2,31 @@ import paramiko
 import time
 import sys
 import logging
-import os 
+import os
 import re
 
-# Prepare logger 
+# Prepare logger
 logger = logging.getLogger('sbc_backup')
 logHandler = logging.FileHandler('sbc_backup.log')
 logFormatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 logHandler.setFormatter(logFormatter)
-logger.addHandler(logHandler) 
+logger.addHandler(logHandler)
 logger.setLevel(logging.DEBUG)   # Set logging level of script
 # logging.getLogger("paramiko").setLevel(logging.DEBUG) # Set logging level of paramiko backend
 
 # Set key variables
 hosts = ['10.100.100.10']   # List of SBCs
-username = 'user'       
+username = 'user'
 key = paramiko.RSAKey.from_private_key_file('I:\Keys\id_rsa.pem')
 remotepath = '/code/gzConfig/dataDoc.gz'
 numberOfBackups = 5    # How many backups should be keept of each device
 
 
 def execute(channel, cmd):
-    try: 
+    try:
         cmd = cmd.strip('\n')
         channel.send(cmd + '\n' )
-        
+
         buff=''
         while not buff.endswith('# ') and not buff.endswith('> '):
             resp = channel.recv(4096)
@@ -34,51 +34,63 @@ def execute(channel, cmd):
         return buff
     except socket.timeout:
         logger.error ('Unable to send/Receive data before socket timeout.')
-        
+
     except:
         logger.error ('Unknown error occured while trying to execute command.')
-        
+
     return None
-    
-    
+
+''' human_sorting https://stackoverflow.com/questions/5967500/how-to-correctly-sort-a-string-with-a-number-inside ''' 
+
+def atoi(text):
+    return int(text) if text.isdigit() else text
+
+def natural_keys(text):
+    '''
+    alist.sort(key=natural_keys) sorts in human order
+    http://nedbatchelder.com/blog/200712/human_sorting.html
+    (See Toothy's implementation in the comments)
+    '''
+    return [ atoi(c) for c in re.split(r'(\d+)', text) ]
+
 def cleanUpBackup(dir):
     backups = os.listdir(dir)
     if len(backups) > numberOfBackups:
         logger.info('Number of backups exceeded limit ' + str(len(backups)) + '/' + str(numberOfBackups) )
-        backups.sort()
+        backups.sort(key=natural_keys)
         logger.warning('Removing lowest revision number: ' + backups[0])
         os.remove(dir + '\\' + backups[0])
     else:
         logger.info('Number of backups within limit ' + str(len(backups)) + '/' + str(numberOfBackups))
-    
-    
+
+
 def connectSSH(host):
     i = 1
     while True:
         logger.info('Trying to connect to ' + host + ' (' + str(i) + '/3)')
-        
+
         try:
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(host,username=username, pkey=key)  
+            ssh.connect(host,username=username, pkey=key)
             logger.info('Connected to ' + host)
-            
+
             return ssh
         except paramiko.AuthenticationException:
             logger.error('Authentication failed when connecting to ' + host)
             return None
-            
+
         except:
             logger.warning('Could not SSH to ' + host + ', wait and try again.')
             i += 1
             time.sleep(2)
-        
+
         # If we could not connect within time limit
         if i == 3:
             logger.error('Could not connect to ' + host  + '. Giving up.')
             return None
-    
-    
+
+
 def connectSFTP(host):
     try:
         transport = paramiko.Transport((host, 22))
@@ -86,26 +98,26 @@ def connectSFTP(host):
         return paramiko.SFTPClient.from_transport(transport)
     except paramiko.SSHException, e:
         logger.error('Failed to open SFTP connection to ' + host)
-        
+
     except paramiko.AuthenticationException:
         logger.error('Authentication failed when connecting to ' + host)
-        
+
     return None
-    
-    
+
+
 def closeConnections():
     try:
         sftp.close()
         logger.info('SFTP connection closed.')
     except:
         logger.warning('Unable to close SFTP connection, was it opened?')
-        
+
     try:
         ssh.close()
         logger.info('SSH connection closed.')
     except:
         logger.warning('Unable to close SSH connection, was is opened?')
-    
+
 
 # Starting Execution here
 try:
@@ -113,15 +125,15 @@ try:
     for host in hosts:
         # Try to connect via SSH to host
         ssh = connectSSH(host)
-         
+
         # Invoke interactive shell to host
         channel = ssh.invoke_shell()
-         
+
         # If the returned connection is None, skip host and move to next
         if ssh is None:
             logger.warning('Skipping ' + host + ', moving to next host.')
             continue
-          
+
         # Try to execute display cfg version command
         logger.info('Checking current cfg version...')
         resp = execute(channel, 'display-running-cfg-version')
@@ -129,7 +141,7 @@ try:
             logger.warning('Executing command on ' + host + ' failed, moving to next host.')
             closeConnections()
             continue
-        
+
         try:
             currentRev = re.search('Running configuration version is (.+?)\r\n', resp).group(1)
             logger.info('Current config revision on ' + host + ' is ' + currentRev)
@@ -138,13 +150,13 @@ try:
             logger.warning('Unable to get config revision from ' + host + ', moving to next host.')
             closeConnections()
             continue
-        
+
         # Create filename that we will use to store the backup localy
         filename = host + '-rev' + currentRev + '.gz'
         directory = host +'-backups'
         # Setup path for saving the backup localy
         localpath = os.path.dirname(os.path.realpath(__file__)) + '\\' + directory + '\\' + filename
-        
+
         # Check if we have a directory for storing backups of this host, if not
         # create one.
         if not os.path.isdir(host +'-backups'):
@@ -155,31 +167,31 @@ try:
                 logger.warning('Backup file ' + filename + ' already exists. Moving to next host.')
                 closeConnections()
                 continue
-                
+
         logger.info('Opening sftp connection and downloading file...')
-            
+
         # Try to open SFTP connection
         sftp = connectSFTP(host)
-            
+
         if sftp is None:
             logger.warning('Failed to open SFTP connection to ' + host  + ', moving to next host.')
             closeConnections
             continue
-         
+
         try:
             # Try to transfer backup file via SFTP
             sftp.get(remotepath, localpath)
-            logger.info('Backup transfered to ' + localpath)        
+            logger.info('Backup transfered to ' + localpath)
         except:
             logger.error('Failed to download dataDoc.gz, moving to next host.')
             closeConnections()
             continue
-            
+
         cleanUpBackup(directory)
-            
+
         # Close any open SSH and SFTP connection
         closeConnections()
-    
+
 except Exception, e:
     logger.critical(e)
 
