@@ -40,7 +40,7 @@ def execute(channel, cmd):
 
     return None
 
--- human_sorting
+''' human_sorting https://stackoverflow.com/questions/5967500/how-to-correctly-sort-a-string-with-a-number-inside ''' 
 
 def atoi(text):
     return int(text) if text.isdigit() else text
